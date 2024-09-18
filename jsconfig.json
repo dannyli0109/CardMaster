@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+      "target": "es6",           // Specifies ES6 as the JavaScript version
+      "module": "es6",           // Enables ES module syntax (import/export)
+      "allowSyntheticDefaultImports": true // Allows default imports for modules with no default export
+    },
+    "include": [
+      "*.js",
+      "**/*.js",
+      "c:\\Users\\AA\\.vscode\\extensions\\samplavigne.p5-vscode-1.2.16\\p5types\\global.d.ts"
+    ]
+  }
