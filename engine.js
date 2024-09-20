@@ -1,14 +1,34 @@
-export const Engine = new Proxy({
-    
-}, {
-    get: function(target, prop) {
-      // Check if the function exists on the p5 object
-      console.log(target);
-      if (typeof p5[prop] === 'function') {
-        // Return the p5 function
-        return p5[prop].bind(p5); // bind to p5 context to ensure it works properly
-      }
-
-      return target[prop];
-    }
-});
+export const Engine = {
+    sceneManager: null,
+    scenes: [],
+    sketch: null,
+    mouseIsClicked: false,
+    resources: {
+        images: {},
+        fonts: {}
+    },
+    _promises: [],
+    loadFont: (name, path) => {
+        let promise = new Promise((resolve, reject) => {    
+            Engine.sketch.loadFont(path, (font) => {
+                Engine.resources.fonts[name] = font;
+                resolve();
+            });
+        });
+        Engine._promises.push(promise);
+        return promise;
+    },
+    loadImage: (name, path) => {
+        let promise = new Promise((resolve, reject) => {    
+            Engine.sketch.loadImage(path, (img) => {
+                Engine.resources.images[name] = img;
+                resolve();
+            });
+        });
+        Engine._promises.push(promise);
+        return promise;
+    },
+    ready: () => {
+        return Promise.all(Engine._promises);
+    },
+}
