@@ -13,7 +13,7 @@ export default class Program {
             menu: new MenuScene()
         }
         Engine.sceneManager.changeScene(Engine.scenes.game);
-        Engine.sketch.createCanvas(this.w, this.h);
+        Engine.sketch.createCanvas(this.w * Engine.scale, this.h * Engine.scale);
     }
 
     update(dt) {

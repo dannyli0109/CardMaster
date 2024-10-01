@@ -20,9 +20,13 @@ new p5((sketch) => {
         Engine.loadImage("monster", "./public/monster.png");
         Engine.loadImage("shield", "./public/shield.png");
         Engine.loadImage("armor", "./public/armor.png");
+        Engine.loadImage("inventory", "./public/inventory.png");
         Engine.ready().then(() => { 
             Engine.isReady = true;
-            program = new Program(1280, 720);
+            Engine.width = 1920;
+            Engine.height = 1080;
+            Engine.scale = 0.5;
+            program = new Program(Engine.width, Engine.height);
         });
         // Engine.loadImage("whitePixel", "./public/1pxWhite.png");
         // Engine.loadImage("panel", "./public/panel-border-012.png");
@@ -38,9 +42,12 @@ new p5((sketch) => {
 
     sketch.draw = () => {
         if (!Engine.isReady) return;
-        program.update(Engine.deltaTime);
+        Engine.sketch.push();
+        Engine.sketch.scale(Engine.scale);
+        program.update(Engine.sketch.deltaTime / 1000);
         program.draw();
         Engine.mouseIsClicked = false;
+        Engine.sketch.pop();
     }
 
     sketch.mouseClicked = () => {

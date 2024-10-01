@@ -10,11 +10,23 @@ export const BattleStates = {
     RESULT: 4
 }
 
+export const BattleStateNames = {
+    0: "准备阶段",
+    1: "抽牌阶段",
+    2: "拼点阶段",
+    3: "行动阶段",
+    4: "结算阶段"
+}
+
 // 战斗状态机
 export class BattleFsm extends Fsm {
     constructor(owner) {
         super(owner);
         this.changeState(BattleReadyState);
+    }
+
+    getCurrentStateName() {
+        return BattleStateNames[this.currentState.state];
     }
 }
 
@@ -45,7 +57,8 @@ export class BattleReadyState extends BattleBaseState {
     }
 
     onUpdate(dt) {
-        console.log("Update ready state");
+        // console.log("Update ready state");
+        // this.fsm.changeState(BattleDrawCardState);
     }
 
     onExit() {
@@ -69,7 +82,7 @@ export class BattleDrawCardState extends BattleBaseState {
     }
 
     onUpdate(dt) {
-        console.log("Update draw card state");
+
     }
 
     onExit() {
@@ -94,6 +107,7 @@ export class BattleRollState extends BattleBaseState {
 
     onUpdate(dt) {
         console.log("Update Roll state");
+
     }
 
     onExit() {
@@ -142,6 +156,7 @@ export class BattleResultState extends BattleBaseState {
 
     onUpdate(dt) {
         console.log("Update result state");
+
     }
 
     onExit() {

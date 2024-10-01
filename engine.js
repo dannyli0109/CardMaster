@@ -1,6 +1,14 @@
+export const ClickableTypes = {
+    Card: 0,
+    Character: 1,
+}
+
+
 export const Engine = {
     sceneManager: null,
     scenes: [],
+    hoverables: [],
+    clickables: [],
     sketch: null,
     mouseIsClicked: false,
     resources: {
