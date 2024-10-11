@@ -15,11 +15,22 @@ import { Player } from "../game_objects/characters/player.js";
 import { IMGUI, Rectangle } from "../imgui.js";
 import Scene from "./scene.js";
 
+const SelectStates = {
+    Idle: "Idle",
+    SelectingCost: "SelectingCost",
+    SelectingTargets: "SelectingTargets",
+    CardPlayed: "CardPlayed"
+};
+
 export class GameScene extends Scene {
     onEnter() {
         this.fsm = new BattleFsm(this);
-        this.selectedCards = [];
-        this.playedCards = [];
+        this.selectedCard = null;
+        this.selectedCosts = [];
+        this.playedCard = [];
+        this.cardSelectionState = SelectStates.Idle;
+
+
         Actions.onBattleStateChanged.add((state) => {
             console.log("Battle state changed to: " + state);
             this.state = state;
@@ -147,8 +158,8 @@ export class GameScene extends Scene {
         let battlePanelPadding = 0;
         let battlePanelW = Engine.width - battlePanelPadding * 2;
         let battlePanelH = 620;
-        let battlePanel = new Rectangle(battlePanelPadding, 0, battlePanelW, battlePanelH);
-        this.renderBattle(battlePanel);
+        this.battlePanel = new Rectangle(battlePanelPadding, 0, battlePanelW, battlePanelH);
+        this.renderBattle(this.battlePanel);
 
         let statePanel = new Rectangle(Engine.width / 2 - 100, 50, 200, 100);
         statePanel.draw();
@@ -188,224 +199,251 @@ export class GameScene extends Scene {
                 ]);
             }
         }
-
-        if (this.playedCards.length > 0) {
-            // handle select target
-            let playedCard = this.playedCards[0];
-            if (playedCard.getType() == CardTypes.Action) {
-                let targets = playedCard.getTargets(this.monsters);
-                let played = false;
-                if (targets.length > 0) {
-                    let tooltipPanelW = 500;
-                    let tooltipW = 300;
-                    let cardToolTip = playedCard.toolTip(true);
-                    let toolTipHeight = IMGUI.getTooltipHeight(tooltipW, 20, cardToolTip);
-                    let toolTipPanel = new Rectangle(battlePanel.x + battlePanel.w / 2  - tooltipPanelW / 2, battlePanel.y + battlePanel.h - toolTipHeight - 30, tooltipPanelW, toolTipHeight);
-                    IMGUI.tooltip(toolTipPanel.x, toolTipPanel.y + toolTipHeight, tooltipW, 20, cardToolTip);
-    
-                    let selectableTargets = targets.filter(t => t.isHovered());
-                    selectableTargets.forEach(t => t.onSelectable());
-                    if (selectableTargets.length > 0 && Engine.mouseIsClicked) {
-                        playedCard.play([selectableTargets[0]]);
-                        played = true;
-                    }
-    
-                    let hoverables = targets.filter(h => h.isHovered());
-                    if (hoverables.length > 0) {
-                        hoverables[0].onHover();
-                    }
-    
-                    if (IMGUI.button(toolTipPanel, tooltipW + 25, toolTipHeight - 75, 150, 75, "取消", 32)) {
-                        this.playedCards.forEach(c => c.onCancle());
-                        this.playedCards = [];
-                    }
-                }
-                else {
-                    playedCard.play();
-                    played = true;
-                }
-    
-                if (played) {
-                    let commandArray = [];
-                    for (let i = 0; i < playedCard.currentCosts.length; i++) {
-                        commandArray.push(
-                            runFuncCommand(() => {
-                                this.player.discardCard(playedCard.currentCosts[i]);
-                            }),
-                            waitCommand(0.1)
-                        );
-                    }
-                    Commands.add(commandArray);
-    
-                    this.selectedCards = [];
-                    this.playedCards = [];   
-                }
-            }
-            
-            // #region Alchemy card action card selection
-            if (playedCard.getType() == CardTypes.Alchemy) {
-                let targets = playedCard.getTargets(this.monsters);
-                let played = false;
-                let selectableTargets = targets.filter(t => t.isHovered());
-                if (targets.length > 0) {
-                    let tooltipPanelW = 500;
-                    let tooltipW = 300;
-                    let cardToolTip = playedCard.toolTip(true);
-                    let toolTipHeight = IMGUI.getTooltipHeight(tooltipW, 20, cardToolTip);
-                    let toolTipPanel = new Rectangle(battlePanel.x + battlePanel.w / 2  - tooltipPanelW / 2, battlePanel.y + battlePanel.h - toolTipHeight - 30, tooltipPanelW, toolTipHeight);
-                    IMGUI.tooltip(toolTipPanel.x, toolTipPanel.y + toolTipHeight, tooltipW, 20, cardToolTip);
-    
-                    let selectableTargets = targets.filter(t => t.isHovered());
-                    selectableTargets.forEach(t => t.onSelectable());
-                    if (selectableTargets.length > 0 && Engine.mouseIsClicked) {
-                        played = true;
-                    }
-    
-                    let hoverables = targets.filter(h => h.isHovered());
-                    if (hoverables.length > 0) {
-                        hoverables[0].onHover();
-                    }
-    
-                    if (IMGUI.button(toolTipPanel, tooltipW + 25, toolTipHeight - 75, 150, 75, "取消", 32)) {
-                        this.playedCards.forEach(c => c.onOtherClick());
-                        this.playedCards[0].onCancle();
-                        this.playedCards = [];
-                    }
-                }
-                else {
-                    played = true;
-                }
-
-                if (played) {
-                    let commandArray = [];
-                    for (let i = 0; i < playedCard.currentCosts.length; i++) {
-                        commandArray.push(
-                            runFuncCommand(() => {
-                                playedCard.currentCosts[i].unlock();
-                            }),
-                            waitCommand(0.1)
-                        );
-                    }
-                    Commands.add(commandArray);
-                    
-                    playedCard.play(selectableTargets);
-                    this.selectedCards = [];
-                    this.playedCards = [];
-                }
-            }
-            // #endregion
+       
+        switch(this.cardSelectionState) {
+            case SelectStates.Idle:
+                this.handleIdleState();
+                break;
+            case SelectStates.SelectingCost:
+                this.handleSelectingCostState();
+                break;
+            case SelectStates.SelectingTargets:
+                this.handleSelectingTargetsState();
+                break;
+            case SelectStates.CardPlayed:
+                this.handleCardPlayedState();
+                break;
         }
-        else {
-            if (this.selectedCards.length > 0) {
-                let tooltipPanelW = 500;
-                let tooltipW = 300;
-                let selectedCard = this.selectedCards[0];
-                let cardToolTip = selectedCard.toolTip(true);
-                let toolTipHeight = IMGUI.getTooltipHeight(tooltipW, 20, cardToolTip);
-                let toolTipPanel = new Rectangle(battlePanel.x + battlePanel.w / 2  - tooltipPanelW / 2, battlePanel.y + battlePanel.h - toolTipHeight - 30, tooltipPanelW, toolTipHeight);
-                // toolTipPanel.draw();
-                IMGUI.tooltip(toolTipPanel.x, toolTipPanel.y + toolTipHeight, tooltipW, 20, cardToolTip);
-                
-                // #region Action card element selection
-                // Action card element selection
-                if (selectedCard.getType() == CardTypes.Action) {
-                    let clickables = Engine.clickables.filter(c => c.isHovered() && Engine.mouseIsClicked);
-                    let elementCards = clickables.filter(c =>c.clickableType() == ClickableTypes.Card && c.getType() == CardTypes.Element);
-                    let selectables = Engine.clickables.filter(c => c.clickableType() == ClickableTypes.Card && c.getType() == CardTypes.Element && c.isHovered());
-                    selectables.forEach(s => s.onSelectable());
-                    if (elementCards.length > 0) {
-                        if (this.selectedCards.includes(elementCards[0])) {
-                            this.selectedCards.splice(this.selectedCards.indexOf(elementCards[0]), 1);
-                            elementCards[0].onOtherClick();
-                            selectedCard.removeCost(elementCards[0]);
-                        }
-                        else {
-                            if (selectedCard.addCost(elementCards[0])) {
-                                this.selectedCards.push(elementCards[0]);
-                                elementCards[0].onClick();
-                            }
-                        }
-                    }
-    
-                    if (IMGUI.button(toolTipPanel, tooltipW + 25, toolTipHeight - 75 * 2 - 10, 150, 75, "出牌", 32)) {
-                        if (selectedCard.canPlay()) {
-                            this.playedCards = [selectedCard];
-                            this.selectedCards.forEach(c => c.onOtherClick());
-                            this.selectedCards = [];
-                        }
-                    }
-                }
-                // #endregion
-    
-                // #region Alchemy card action card selection
-
-                if (selectedCard.getType() == CardTypes.Alchemy) {
-                    let clickables = Engine.clickables.filter(c => c.isHovered() && Engine.mouseIsClicked);
-                    let actionCards = clickables.filter(c =>c.clickableType() == ClickableTypes.Card && c.getType() == CardTypes.Action);
-                    let selectables = Engine.clickables.filter(c => c.clickableType() == ClickableTypes.Card && c.getType() == CardTypes.Action && c.isHovered() && c.locked);
-                    selectables.forEach(s => s.onSelectable());
-
-                    if (actionCards.length > 0) {
-                        if (this.selectedCards.includes(actionCards[0])) {
-                            this.selectedCards.splice(this.selectedCards.indexOf(actionCards[0]), 1);
-                            actionCards[0].onOtherClick();
-                            selectedCard.removeCost(actionCards[0]);
-                        }
-                        else {
-                            if (selectedCard.addCost(actionCards[0])) {
-                                this.selectedCards.push(actionCards[0]);
-                                actionCards[0].onClick();
-                            }
-                        }
-                    }
-    
-                    if (IMGUI.button(toolTipPanel, tooltipW + 25, toolTipHeight - 75 * 2 - 10, 150, 75, "出牌", 32)) {
-                        if (selectedCard.canPlay()) {
-                            this.playedCards = [selectedCard];
-                            this.selectedCards.forEach(c => c.onOtherClick());
-                            this.selectedCards = [];
-                        }
-                    }
-                }
-                
-                // #endregion
-
-                if (IMGUI.button(toolTipPanel, tooltipW + 25, toolTipHeight - 75, 150, 75, "取消", 32)) {
-                    this.selectedCards.forEach(c => c.onOtherClick());
-                    this.selectedCards[0].onCancle();
-                    this.selectedCards = [];
-                }
-    
-            }
-            else {
-                let selectables = Engine.clickables.filter(c => {
-                    return c.clickableType() == ClickableTypes.Card && c.getType() != CardTypes.ELement && c.isSelectable() && c.isHovered()
-                });
-
-                selectables.forEach(s => s.onSelectable());
-                if (selectables.length > 0 && Engine.mouseIsClicked) {
-                    if (selectables[0].getType() !== CardTypes.Element) {
-                        selectables[0].onClick();
-                        this.selectedCards = [selectables[0]];
-                        
-                        for (let i = 0; i < Engine.clickables.length; i++) {
-                            if (Engine.clickables[i] != selectables[0]) {
-                                Engine.clickables[i].onOtherClick();
-                            }
-                        }
-                    }
-                }
-                let hoverables = Engine.hoverables.filter(h => h.isHovered());
-                if (hoverables.length > 0 && hoverables[0] != this.selectedCards[0]) {
-                    hoverables[0].onHover();
-                }
-            }
-        }           
 
         Engine.hoverables = [];
         Engine.clickables = [];
     }
     // #endregion
+
+    getSelectableCards(condition) {
+        let selectables = Engine.clickables.filter(c => {
+            return condition(c) && c.isSelectable() && c.isHovered()
+        });
+        return selectables;
+    }
+
+    handleCardSelection(cards) {
+        let selectables = cards.filter(c => c.isHovered());
+        let clickedCard = null;
+        if (selectables.length > 0 && Engine.mouseIsClicked) {
+            if (selectables[0].getType() !== CardTypes.Element) {
+                selectables[0].onClick();
+                clickedCard = selectables[0];
+                this.selectedCards = [selectables[0]];
+                
+                for (let i = 0; i < Engine.clickables.length; i++) {
+                    if (Engine.clickables[i] != selectables[0]) {
+                        Engine.clickables[i].onOtherClick();
+                    }
+                }
+            }
+        }
+        let hoverables = cards.filter(h => h.isHovered());
+        if (hoverables.length > 0 && hoverables[0] != this.selectedCard) {
+            hoverables[0].onHover();
+        }
+
+        return clickedCard;
+    }
+
+    // #region state handling
+    handleIdleState() {
+        // c.clickableType() == ClickableTypes.Card && c.getType() != CardTypes.ELement
+        let selectables = this.getSelectableCards((c) => c.clickableType() == ClickableTypes.Card && c.getType() != CardTypes.Element);
+        selectables.forEach(s => s.onSelectable());
+        let clickedCard = this.handleCardSelection(selectables);
+        if (clickedCard) {
+            this.selectedCard = clickedCard;
+            this.cardSelectionState = SelectStates.SelectingCost;
+        }
+    }
+
+    handleSelectingCostState() {
+        let selectedCard = this.selectedCard;
+        let tooltipPanelW = 500;
+        let tooltipW = 300;
+        let cardToolTip = selectedCard.toolTip(true);
+        let toolTipHeight = IMGUI.getTooltipHeight(tooltipW, 20, cardToolTip);
+        let toolTipPanel = new Rectangle(this.battlePanel.x + this.battlePanel.w / 2  - tooltipPanelW / 2, this.battlePanel.y + this.battlePanel.h - toolTipHeight - 30, tooltipPanelW, toolTipHeight);
+        IMGUI.tooltip(toolTipPanel.x, toolTipPanel.y + toolTipHeight, tooltipW, 20, cardToolTip);
+        
+        if (selectedCard.getType() == CardTypes.Action) {
+            let clickables = Engine.clickables.filter(c => c.isHovered() && Engine.mouseIsClicked);
+            let elementCards = clickables.filter(c =>c.clickableType() == ClickableTypes.Card && c.getType() == CardTypes.Element);
+            let selectables = Engine.clickables.filter(c => c.clickableType() == ClickableTypes.Card && c.getType() == CardTypes.Element && c.isHovered());
+            selectables.forEach(s => s.onSelectable());
+            if (elementCards.length > 0) {
+                if (this.selectedCosts.includes(elementCards[0])) {
+                    this.selectedCosts.splice(this.selectedCosts.indexOf(elementCards[0]), 1);
+                    elementCards[0].onOtherClick();
+                    selectedCard.removeCost(elementCards[0]);
+                }
+                else {
+                    if (selectedCard.addCost(elementCards[0])) {
+                        this.selectedCosts.push(elementCards[0]);
+                        elementCards[0].onClick();
+                    }
+                }
+            }
+        }
+
+        if (selectedCard.getType() == CardTypes.Alchemy) {
+            let clickables = Engine.clickables.filter(c => c.isHovered() && Engine.mouseIsClicked);
+            let actionCards = clickables.filter(c =>c.clickableType() == ClickableTypes.Card && c.getType() == CardTypes.Action);
+            let selectables = Engine.clickables.filter(c => c.clickableType() == ClickableTypes.Card && c.getType() == CardTypes.Action && c.isHovered() && c.locked);
+            selectables.forEach(s => s.onSelectable());
+
+            if (actionCards.length > 0) {
+                if (this.selectedCosts.includes(actionCards[0])) {
+                    this.selectedCosts.splice(this.selectedCosts.indexOf(actionCards[0]), 1);
+                    actionCards[0].onOtherClick();
+                    selectedCard.removeCost(actionCards[0]);
+                }
+                else {
+                    if (selectedCard.addCost(actionCards[0])) {
+                        this.selectedCosts.push(actionCards[0]);
+                        actionCards[0].onClick();
+                    }
+                }
+            }
+        }
+
+        if (IMGUI.button(toolTipPanel, tooltipW + 25, toolTipHeight - 75 * 2 - 10, 150, 75, "出牌", 32)) {
+            if (selectedCard.canPlay()) {
+                this.playedCard = selectedCard;
+                this.selectedCard.onOtherClick();
+                this.selectedCard = null;
+                this.selectedCosts.forEach(c => c.onOtherClick());
+                this.selectedCosts = [];
+                this.cardSelectionState = SelectStates.SelectingTargets;
+            }
+        }
+
+        if (IMGUI.button(toolTipPanel, tooltipW + 25, toolTipHeight - 75, 150, 75, "取消", 32)) {
+            this.selectedCard.onOtherClick();
+            this.selectedCard = null;
+            this.selectedCosts.forEach(c => c.onOtherClick());
+            this.selectedCosts = [];
+            this.cardSelectionState = SelectStates.Idle;
+        }
+    }
+
+    handleSelectingTargetsState() {
+        let playedCard = this.playedCard;
+        if (playedCard.getType() == CardTypes.Action) {
+            let targets = playedCard.getTargets(this.monsters);
+            let played = false;
+            if (targets.length > 0) {
+                let tooltipPanelW = 500;
+                let tooltipW = 300;
+                let cardToolTip = playedCard.toolTip(true);
+                let toolTipHeight = IMGUI.getTooltipHeight(tooltipW, 20, cardToolTip);
+                let toolTipPanel = new Rectangle(this.battlePanel.x + this.battlePanel.w / 2  - tooltipPanelW / 2, this.battlePanel.y + this.battlePanel.h - toolTipHeight - 30, tooltipPanelW, toolTipHeight);
+                IMGUI.tooltip(toolTipPanel.x, toolTipPanel.y + toolTipHeight, tooltipW, 20, cardToolTip);
+    
+                let selectableTargets = targets.filter(t => t.isHovered());
+                selectableTargets.forEach(t => t.onSelectable());
+                if (selectableTargets.length > 0 && Engine.mouseIsClicked) {
+                    playedCard.play([selectableTargets[0]]);
+                    played = true;
+                }
+    
+                let hoverables = targets.filter(h => h.isHovered());
+                if (hoverables.length > 0) {
+                    hoverables[0].onHover();
+                }
+    
+                if (IMGUI.button(toolTipPanel, tooltipW + 25, toolTipHeight - 75, 150, 75, "取消", 32)) {
+                    this.playedCard = null;
+                    this.cardSelectionState = SelectStates.Idle;
+                }
+            }
+            else {
+                playedCard.play();
+                played = true;
+            }
+    
+            if (played) {
+                let commandArray = [];
+                for (let i = 0; i < playedCard.currentCosts.length; i++) {
+                    commandArray.push(
+                        runFuncCommand(() => {
+                            this.player.discardCard(playedCard.currentCosts[i]);
+                        }),
+                        waitCommand(0.1)
+                    );
+                }
+                Commands.add(commandArray);
+    
+                this.selectedCards = [];
+                this.playedCards = [];   
+                this.cardSelectionState = SelectStates.Idle;
+            }
+        }
+
+        if (playedCard.getType() == CardTypes.Alchemy) {
+            let targets = playedCard.getTargets(this.monsters);
+            let played = false;
+            let selectableTargets = targets.filter(t => t.isHovered());
+            if (targets.length > 0) {
+                let tooltipPanelW = 500;
+                let tooltipW = 300;
+                let cardToolTip = playedCard.toolTip(true);
+                let toolTipHeight = IMGUI.getTooltipHeight(tooltipW, 20, cardToolTip);
+                let toolTipPanel = new Rectangle(this.battlePanel.x + this.battlePanel.w / 2  - tooltipPanelW / 2, this.battlePanel.y + this.battlePanel.h - toolTipHeight - 30, tooltipPanelW, toolTipHeight);
+                IMGUI.tooltip(toolTipPanel.x, toolTipPanel.y + toolTipHeight, tooltipW, 20, cardToolTip);
+    
+                let selectableTargets = targets.filter(t => t.isHovered());
+                selectableTargets.forEach(t => t.onSelectable());
+                if (selectableTargets.length > 0 && Engine.mouseIsClicked) {
+                    played = true;
+                }
+    
+                let hoverables = targets.filter(h => h.isHovered());
+                if (hoverables.length > 0) {
+                    hoverables[0].onHover();
+                }
+    
+                if (IMGUI.button(toolTipPanel, tooltipW + 25, toolTipHeight - 75, 150, 75, "取消", 32)) {
+                    this.playedCard = null;
+                    this.cardSelectionState = SelectStates.Idle;
+                }
+            }
+            else {
+                played = true;
+            }
+
+            if (played) {
+                let commandArray = [];
+                for (let i = 0; i < playedCard.currentCosts.length; i++) {
+                    commandArray.push(
+                        runFuncCommand(() => {
+                            playedCard.currentCosts[i].unlock();
+                        }),
+                        waitCommand(0.1)
+                    );
+                }
+                Commands.add(commandArray);
+                
+                playedCard.play(selectableTargets);
+                this.selectedCards = [];
+                this.playedCards = [];
+                this.cardSelectionState = SelectStates.Idle;
+            }
+        }
+    }
+
+    handleCardPlayedState() {
+        if (this.playedCard) {
+            this.playedCard = null;
+            this.cardSelectionState = SelectStates.Idle;
+        }
+    }
 
     // #region battle rendering
     renderBattle(battlePanel) {
